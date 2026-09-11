@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بوابة الاختبارات والأرشيف - الطالب</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+        body { font-family: 'Cairo', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+        <header class="bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700 flex justify-between items-center">
+            <div>
+                <h1 id="mainExamTitle" class="text-xl font-bold text-indigo-400">🎮 ساحة التحدي والأرشيف الدراسي</h1>
+                <p class="text-slate-400 text-sm">متصل بالسحابة والأرشيف اللحظي</p>
+            </div>
+            <div id="timerContainer" class="hidden bg-rose-950/60 border border-rose-500/40 px-4 py-2 rounded-xl text-rose-300 font-bold text-lg">
+                ⏳ <span id="timeLeft">--:--</span>
+            </div>
+        </header>
+
+        <!-- لوحة الأخبار والإعلانات -->
+        <div id="studentNewsSection" class="bg-slate-800 p-6 rounded-2xl shadow-xl border border-teal-500/40 space-y-3">
+            <h2 class="text-lg font-bold text-teal-400">📢 لوحة إعلانات وأخبار المعلم</h2>
+            <div id="studentNewsContainer" class="space-y-2">جاري التحميل...</div>
+        </div>
+
+        <!-- بداية الامتحان الحالي (أو رسالة الإخفاء) -->
+        <div id="startScreen" class="bg-slate-800 p-8 rounded-2xl shadow-xl border border-slate-700 text-center space-y-6">
+            <h2 id="welcomeExamTitle" class="text-2xl font-bold text-white">جاري التحقق من حالة الامتحان...</h2>
+            <p id="welcomeExamInfo" class="text-slate-400">انتظر لحظات...</p>
+            <div id="startBtnWrapper" class="hidden">
+                <button onclick="startExam()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-8 rounded-2xl shadow-lg transition text-lg">ابدأ الامتحان الحالي ⏱️</button>
+            </div>
+        </div>
+
+        <!-- أرشيف الامتحانات السابقة -->
+        <div class="bg-slate-800 p-6 rounded-2xl shadow-xl border border-indigo-500/30 space-y-4">
+            <h2 class="text-lg font-bold text-indigo-300">📂 أرشيف الاختبارات والامتحانات السابقة</h2>
+            <p class="text-slate-400 text-xs">يمكنك تصفح وإعادة حل أي امتحان قديم في أي وقت للتدريب:</p>
+            <div id="archiveContainer" class="space-y-2">جاري تحميل الأرشيف...</div>
+        </div>
+
+        <div id="resourceBox" class="hidden bg-indigo-950/50 p-4 rounded-xl border border-indigo-500/30 text-center">
+            <a id="externalLink" href="#" target="_blank" class="inline-block bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm transition">فتح الرابط المرفق ↗</a>
+        </div>
+
+        <!-- ساحة الأسئلة -->
+        <div id="examInterface" class="hidden bg-slate-800 p-6 md:p-8 rounded-2xl shadow-xl border border-slate-700 space-y-6">
+            <div id="studentQuestionsContainer" class="space-y-6"></div>
+            <button onclick="submitExam()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-6 rounded-xl transition">إرسال الإجابات للمعلم</button>
+        </div>
+
+        <!-- النتيجة -->
+        <div id="resultCard" class="hidden bg-slate-800 p-6 rounded-2xl shadow-xl border border-indigo-500 text-center space-y-3">
+            <h2 class="text-2xl font-bold text-amber-400">📜 شهادة المعلم وتقييمك</h2>
+            <p id="titleDisplay" class="text-indigo-300 font-bold text-lg"></p>
+            <p id="scoreDisplay" class="text-xl font-semibold text-white"></p>
+            <p id="commentDisplay" class="text-slate-300"></p>
+        </div>
+
+        <div id="waitingCard" class="hidden bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700 text-center">
+            <p class="text-slate-400">⏳ تم إرسال إجاباتك بنجاح. انتظر إعلان النتيجة والتقييم من المعلم هنا.</p>
+        </div>
+    </div>
+
+    <!-- جافاسكريبت الطالب -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBNrn8VBnaUHktyiwHuU3_b7sDTTFcmxI",
+            authDomain: "exam-system-678cd.firebaseapp.com",
+            projectId: "exam-system-678cd",
+            storageBucket: "exam-system-678cd.firebasestorage.app",
+            messagingSenderId: "36568891135",
+            appId: "1:36568891135:web:d436f632ed321dd9a36c2a"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        let activeExamData = null;
+        let timerInterval = null;
+
+        // جلب أخبار الأرشيف
+        onSnapshot(collection(db, "news_archive"), (snapshot) => {
+            const container = document.getElementById('studentNewsContainer');
+            if(snapshot.empty) { container.innerHTML = '<p class="text-slate-500 text-xs">لا توجد أخبار أرشفة حتى الآن.</p>'; return; }
+            let html = '';
+            snapshot.forEach(doc => {
+                const n = doc.data();
+                html += `<div class="p-3 bg-slate-900 rounded-xl border border-slate-700"><div class="flex justify-between items-center"><span class="font-bold text-teal-300 text-sm">${n.title || ''}</span><span class="text-slate-500 text-[10px]">${n.date || ''}</span></div><p class="text-slate-300 text-xs mt-1">${n.content}</p></div>`;
+            });
+            container.innerHTML = html;
+        });
+
+        // جلب أرشيف الامتحانات السابقة مع التحقق من حالة isActive
+        async function loadExamsArchive() {
+            const container = document.getElementById('archiveContainer');
+            try {
+                const querySnapshot = await getDocs(collection(db, "exams_archive"));
+                if(querySnapshot.empty) {
+                    container.innerHTML = '<p class="text-slate-500 text-xs">لا توجد امتحانات سابقة في الأرشيف.</p>';
+                    return;
+                }
+                let html = '';
+                let count = 0;
+
+                querySnapshot.forEach((docSnap) => {
+                    const ex = docSnap.data();
+                    
+                    // لو الامتحان مخفي (isActive بـ false)، نتخطاه تماماً ولا نعرضه
+                    if(ex.isActive === false) return;
+
+                    count++;
+                    const examString = encodeURIComponent(JSON.stringify(ex));
+                    html += `
+                        <div class="p-3 bg-slate-900 rounded-xl border border-slate-700 flex justify-between items-center">
+                            <div>
+                                <h3 class="font-bold text-indigo-300 text-sm">${ex.title || 'امتحان أرشيف'}</h3>
+                                <p class="text-slate-400 text-[11px]">تاريخ الأرشيف: ${ex.archivedAt || 'غير معروف'} | عدد الأسئلة: ${ex.questions ? ex.questions.length : 0}</p>
+                            </div>
+                            <button onclick="startArchiveExam('${examString}')" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs transition">بدء التدريب ↗</button>
+                        </div>
+                    `;
+                });
+
+                if(count === 0) {
+                    container.innerHTML = '<p class="text-slate-500 text-xs">لا توجد امتحانات نشطة في الأرشيف حالياً.</p>';
+                } else {
+                    container.innerHTML = html;
+                }
+            } catch(e) {
+                container.innerHTML = '<p class="text-rose-400 text-xs">خطأ في تحميل الأرشيف.</p>';
+            }
+        }
+        loadExamsArchive();
+
+        window.startArchiveExam = function(encodedData) {
+            const examData = JSON.parse(decodeURIComponent(encodedData));
+            activeExamData = examData;
+            document.getElementById('startScreen').classList.add('hidden');
+            renderQuestions(activeExamData);
+            startCountdown(activeExamData.duration || 3);
+        }
+
+        // متابعة الامتحان الحالي سحابياً وحالة الإخفاء
+        onSnapshot(doc(db, "exam_data", "current_exam"), async (docSnap) => {
+            if(!docSnap.exists()) return;
+            activeExamData = docSnap.data();
+
+            const subSnap = await getDoc(doc(db, "exam_data", "student_submission"));
+            const isSubmitted = subSnap.exists() && subSnap.data().submitted;
+
+            if(isSubmitted) {
+                document.getElementById('startScreen').classList.add('hidden');
+                document.getElementById('waitingCard').classList.remove('hidden');
+                checkResult();
+                return;
+            }
+
+            // التحقق هل الامتحان مخفي من المعلم أم لا
+            if(activeExamData.isActive === false) {
+                document.getElementById('welcomeExamTitle').innerText = "🔒 الامتحان مخفي حالياً";
+                document.getElementById('welcomeExamInfo').innerText = "انتظر حتى يقوم المعلم بإظهار الامتحان وبدء الجلسة...";
+                document.getElementById('startBtnWrapper').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('welcomeExamTitle').innerText = activeExamData.title || "امتحان جديد";
+            document.getElementById('welcomeExamInfo').innerText = `مدة الامتحان: ${activeExamData.duration || 3} دقائق.`;
+            document.getElementById('startBtnWrapper').classList.remove('hidden');
+        });
+
+        window.startExam = function() {
+            document.getElementById('startScreen').classList.add('hidden');
+            renderQuestions(activeExamData);
+            startCountdown(activeExamData.duration || 3);
+        }
+
+        function renderQuestions(examData) {
+            document.getElementById('mainExamTitle').innerText = examData.title;
+            const container = document.getElementById('studentQuestionsContainer');
+            const resourceBox = document.getElementById('resourceBox');
+            const extLink = document.getElementById('externalLink');
+
+            if(examData.link) { extLink.href = examData.link; resourceBox.classList.remove('hidden'); }
+
+            let html = '';
+            examData.questions.forEach((q, qIdx) => {
+                html += `<div class="p-4 bg-slate-900 rounded-xl border border-slate-700"><p class="font-semibold text-lg mb-3">السؤال ${qIdx + 1}: ${q.text}</p><div class="space-y-2">`;
+                q.options.forEach((opt, optIdx) => {
+                    html += `<label class="block p-3 bg-slate-800 rounded-lg border border-slate-700 cursor-pointer hover:bg-indigo-950 transition"><input type="radio" name="q_${qIdx}" value="${optIdx}" class="ml-2"> ${opt}</label>`;
+                });
+                html += `</div></div>`;
+            });
+            container.innerHTML = html;
+            document.getElementById('examInterface').classList.remove('hidden');
+            document.getElementById('timerContainer').classList.remove('hidden');
+        }
+
+        function startCountdown(durationMinutes) {
+            let timeLeftMs = durationMinutes * 60 * 1000;
+            const startTime = Date.now();
+
+            timerInterval = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                const remaining = timeLeftMs - elapsed;
+
+                if(remaining <= 0) {
+                    clearInterval(timerInterval);
+                    alert('انتهى الوقت!');
+                    window.submitExam(true);
+                    return;
+                }
+
+                const m = Math.floor(remaining / 60000);
+                const s = Math.floor((remaining % 60000) / 1000);
+                document.getElementById('timeLeft').innerText = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+            }, 1000);
+        }
+
+        window.submitExam = async function(isAuto = false) {
+            if(timerInterval) clearInterval(timerInterval);
+            let score = 0;
+            const total = activeExamData.questions.length;
+
+            activeExamData.questions.forEach((q, qIdx) => {
+                const selected = document.querySelector(`input[name="q_${qIdx}"]:checked`);
+                if(selected && parseInt(selected.value) === q.correct) score++;
+            });
+
+            try {
+                await setDoc(doc(db, "exam_data", "student_submission"), {
+                    submitted: true, score, total, percentage: Math.round((score/total)*100), time: new Date().toLocaleTimeString()
+                });
+                if(!isAuto) alert('تم إرسال إجاباتك للمعلم بنجاح!');
+                location.reload();
+            } catch(e) { alert('خطأ في الإرسال: ' + e.message); }
+        }
+
+        async function checkResult() {
+            onSnapshot(doc(db, "exam_data", "student_result"), (docSnap) => {
+                if(docSnap.exists() && docSnap.data().published) {
+                    const res = docSnap.data();
+                    document.getElementById('titleDisplay').innerText = `اللقب: ${res.title}`;
+                    document.getElementById('scoreDisplay').innerText = `الدرجة: ${res.score} / ${res.total} (${res.percentage}%)`;
+                    document.getElementById('commentDisplay').innerText = `تعليق المعلم: ${res.comment}`;
+                    document.getElementById('resultCard').classList.remove('hidden');
+                    document.getElementById('waitingCard').classList.add('hidden');
+                }
+            });
+        }
+    </script>
+</body>
+</html>
