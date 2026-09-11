@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم المعلم - Firebase</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+        body { font-family: 'Cairo', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8">
+    <div class="max-w-4xl mx-auto space-y-6">
+        <header class="bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-indigo-400">⚙️ لوحة تحكم المعلم (متصل بالسحابة)</h1>
+                <p class="text-slate-400 text-sm">إدارة الامتحانات والأخبار بشكل لحظي مع أخوك</p>
+            </div>
+            <a href="student.html" target="_blank" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-sm transition">معاينة صفحة الطالب ↗</a>
+        </header>
+
+        <!-- لوحة إدارة الأخبار -->
+        <div class="bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700 space-y-4">
+            <h2 class="text-lg font-bold text-teal-400">📢 لوحة الأخبار والتنبيهات المباشرة</h2>
+            <div class="space-y-3">
+                <input type="text" id="newsTitleInput" placeholder="عنوان الخبر أو الميعاد..." class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white">
+                <textarea id="newsContentInput" rows="2" placeholder="تفاصيل الخبر..." class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white"></textarea>
+                <button onclick="saveNews()" class="bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 px-6 rounded-xl transition text-sm">+ نشر الخبر سحابياً</button>
+            </div>
+        </div>
+
+        <!-- متابعة إجابات الطالب -->
+        <div class="bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700 space-y-4">
+            <h2 class="text-lg font-bold text-amber-400">📊 متابعة إجابات أخوك اللحظية</h2>
+            <div id="liveTracker" class="text-slate-300 p-4 bg-slate-900 rounded-xl border border-slate-700">
+                جاري الاتصال بقاعدة البيانات والانتظار...
+            </div>
+            
+            <div id="publishResultBox" class="hidden space-y-3 pt-2 border-t border-slate-700">
+                <input type="text" id="resultTitleInput" placeholder="اللقب أو التقييم (مثال: بطل الميكانيكا)" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white">
+                <textarea id="resultCommentInput" rows="2" placeholder="كلمة تشجيعية..." class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white"></textarea>
+                <button onclick="publishResult()" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl transition">إعلان النتيجة لأخوك 🏆</button>
+            </div>
+        </div>
+
+        <!-- نشر امتحان جديد -->
+        <div class="bg-slate-800 p-6 md:p-8 rounded-2xl shadow-xl border border-slate-700 space-y-6">
+            <h2 class="text-xl font-bold text-indigo-400">📝 نشر امتحان جديد سحابياً</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="md:col-span-2">
+                    <label class="block text-sm text-slate-400 mb-1">عنوان الامتحان:</label>
+                    <input type="text" id="examTitleInput" placeholder="اسم الامتحان..." class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white">
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">المدة (بالدقائق):</label>
+                    <input type="number" id="examDurationInput" min="1" value="10" class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white text-center">
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm text-slate-400 mb-1">🔗 رابط خارجي (اختياري):</label>
+                <input type="text" id="examLinkInput" placeholder="https://..." class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-white">
+            </div>
+            <div id="adminQuestionsList" class="space-y-4"></div>
+            <button onclick="addQuestionBox()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-xl text-sm transition">+ إضافة سؤال جديد</button>
+            <button onclick="publishExamToFirebase()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-6 rounded-xl transition shadow-lg">نشر الامتحان على سحابة فايربيس 🚀</button>
+        </div>
+    </div>
+
+    <!-- كود ربط Firebase وجافاسكريبت المعلم -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBNrn8VBnaUHktyiwHuU3_b7sDTTFcmxI",
+            authDomain: "exam-system-678cd.firebaseapp.com",
+            projectId: "exam-system-678cd",
+            storageBucket: "exam-system-678cd.firebasestorage.app",
+            messagingSenderId: "36568891135",
+            appId: "1:36568891135:web:08032b1671948ed4a36c2a"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        window.addQuestionBox = function(qText = '', options = ['', '', '', ''], correct = 0) {
+            const container = document.getElementById('adminQuestionsList');
+            const idx = container.children.length;
+            const div = document.createElement('div');
+            div.className = "q-card p-4 bg-slate-900 rounded-xl border border-slate-700 space-y-3";
+            
+            let optsHtml = '';
+            for(let i=0; i<4; i++) {
+                optsHtml += `<input type="text" placeholder="الخيار ${i+1}" value="${options[i] || ''}" class="opt-val-${idx} w-full p-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white mb-1">`;
+            }
+
+            div.innerHTML = `
+                <div class="flex justify-between items-center"><span class="font-bold text-indigo-300">السؤال ${idx + 1}</span><button type="button" onclick="this.parentElement.parentElement.remove()" class="text-rose-400 text-xs">حذف</button></div>
+                <input type="text" placeholder="نص السؤال" value="${qText}" class="q-text-${idx} w-full p-2 bg-slate-800 border border-slate-700 rounded-lg text-white">
+                <div class="space-y-1">${optsHtml}</div>
+                <div><label class="text-xs text-slate-400">رقم الصحيحة (0-3):</label> <input type="number" min="0" max="3" value="${correct}" class="q-correct-${idx} w-20 p-1 bg-slate-800 border border-slate-700 rounded text-white text-center"></div>
+            `;
+            container.appendChild(div);
+        }
+
+        window.publishExamToFirebase = async function() {
+            const cards = document.querySelectorAll('.q-card');
+            let questions = [];
+            const title = document.getElementById('examTitleInput').value || "امتحان جديد";
+            const duration = parseInt(document.getElementById('examDurationInput').value) || 10;
+            const link = document.getElementById('examLinkInput').value;
+
+            cards.forEach((card, idx) => {
+                const text = card.querySelector(`.q-text-${idx}`).value;
+                const optInputs = card.querySelectorAll(`.opt-val-${idx}`);
+                const correct = parseInt(card.querySelector(`.q-correct-${idx}`).value);
+                let options = [];
+                optInputs.forEach(inp => options.push(inp.value));
+                if(text) questions.push({ text, options, correct });
+            });
+
+            if(questions.length === 0) { alert('أضف سؤالاً واحداً على الأقل!'); return; }
+
+            try {
+                await setDoc(doc(db, "exam_data", "current_exam"), {
+                    title, duration, link, questions, timestamp: new Date().toISOString()
+                });
+                await setDoc(doc(db, "exam_data", "student_submission"), { submitted: false });
+                await setDoc(doc(db, "exam_data", "student_result"), { published: false });
+                alert('تم نشر الامتحان على سحابة فايربيس بنجاح!');
+            } catch (e) {
+                alert('حدث خطأ في النشر: ' + e.message);
+            }
+        }
+
+        window.saveNews = async function() {
+            const title = document.getElementById('newsTitleInput').value;
+            const content = document.getElementById('newsContentInput').value;
+            if(!title && !content) return;
+            try {
+                await addDoc(collection(db, "news"), { title, content, date: new Date().toLocaleDateString() });
+                document.getElementById('newsTitleInput').value = '';
+                document.getElementById('newsContentInput').value = '';
+                alert('تم نشر الخبر بنجاح!');
+            } catch(e) { alert(e.message); }
+        }
+
+        window.publishResult = async function() {
+            const title = document.getElementById('resultTitleInput').value || "ممتاز";
+            const comment = document.getElementById('resultCommentInput').value || "استمر يا بطل";
+            const subDoc = await getDoc(doc(db, "exam_data", "student_submission"));
+            if(!subDoc.exists() || !subDoc.data().submitted) { alert('الطالب لم يرسل الإجابة بعد!'); return; }
+            
+            const subData = subDoc.data();
+            await setDoc(doc(db, "exam_data", "student_result"), {
+                published: true, title, comment, score: subData.score, total: subData.total, percentage: subData.percentage
+            });
+            alert('تم نشر النتيجة لأخوك بنجاح!');
+        }
+
+        // مراقبة إجابات الطالب لحظياً
+        onSnapshot(doc(db, "exam_data", "student_submission"), (docSnap) => {
+            const tracker = document.getElementById('liveTracker');
+            const box = document.getElementById('publishResultBox');
+            if(docSnap.exists() && docSnap.data().submitted) {
+                const data = docSnap.data();
+                tracker.innerHTML = `✅ أرسل أخوك الإجابة! الدرجة: <strong>${data.score} / ${data.total}</strong> (${data.percentage}%)`;
+                box.classList.remove('hidden');
+            } else {
+                tracker.innerHTML = `جاري الانتظار لحل الطالب...`;
+                box.classList.add('hidden');
+            }
+        });
+
+        addQuestionBox();
+    </script>
+</body>
+</html>
