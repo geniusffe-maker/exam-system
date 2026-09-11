@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بوابة الاختبارات والتحدي - الطالب</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+        body { font-family: 'Cairo', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+        <header class="bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700 flex justify-between items-center">
+            <div>
+                <h1 id="mainExamTitle" class="text-xl font-bold text-indigo-400">🎮 ساحة التحدي الدراسي</h1>
+                <p class="text-slate-400 text-sm" id="examSubtitle">استعد للاختبارات والمتابعة</p>
+            </div>
+            <!-- عداد الوقت -->
+            <div id="timerContainer" class="hidden bg-rose-950/60 border border-rose-500/40 px-4 py-2 rounded-xl text-rose-300 font-bold text-lg">
+                ⏳ <span id="timeLeft">--:--</span>
+            </div>
+        </header>
+
+        <!-- لوحة أخبار وتنبيهات المعلم للطالب -->
+        <div id="studentNewsSection" class="bg-slate-800 p-6 rounded-2xl shadow-xl border border-teal-500/40 space-y-3">
+            <h2 class="text-lg font-bold text-teal-400 flex items-center gap-2">📢 لوحة إعلانات ومواعيد المعلم</h2>
+            <div id="studentNewsContainer" class="space-y-2">
+                <!-- الأخبار تظهر هنا تلقائياً -->
+            </div>
+        </div>
+
+        <!-- واجهة بداية الامتحان -->
+        <div id="startScreen" class="bg-slate-800 p-8 rounded-2xl shadow-xl border border-slate-700 text-center space-y-6">
+            <div class="space-y-2">
+                <h2 id="welcomeExamTitle" class="text-2xl font-bold text-white">لا توجد امتحانات نشطة حالياً</h2>
+                <p id="welcomeExamInfo" class="text-slate-400">تابع لوحة الإعلانات أعلاه أو انتظر المعلم لنشر امتحان جديد.</p>
+            </div>
+            <div id="startBtnWrapper" class="hidden">
+                <button onclick="startExamTimer()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-8 rounded-2xl shadow-lg transition text-lg">ابدأ الامتحان الآن ⏱️</button>
+            </div>
+        </div>
+
+        <div id="resourceBox" class="hidden bg-indigo-950/50 p-4 rounded-xl border border-indigo-500/30 text-center">
+            <p class="text-indigo-300 mb-2 font-semibold">📁 روابط ومصادر إضافية من المعلم:</p>
+            <a id="externalLink" href="#" target="_blank" class="inline-block bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm transition">فتح الرابط المرفق</a>
+        </div>
+
+        <!-- ساحة الأسئلة -->
+        <div id="examInterface" class="hidden bg-slate-800 p-6 md:p-8 rounded-2xl shadow-xl border border-slate-700 space-y-6">
+            <div id="studentQuestionsContainer" class="space-y-6">
+                <!-- الأسئلة -->
+            </div>
+            
+            <div id="submitBtnContainer" class="mt-6">
+                <button onclick="submitExam()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-6 rounded-xl transition">إرسال الإجابات للمعلم</button>
+            </div>
+        </div>
+
+        <!-- نتيجة وشهادة المعلم -->
+        <div id="resultCard" class="hidden bg-slate-800 p-6 rounded-2xl shadow-xl border border-indigo-500 text-center space-y-3">
+            <h2 class="text-2xl font-bold text-amber-400">📜 شهادة المعلم وتقييمك</h2>
+            <p id="titleDisplay" class="text-indigo-300 font-bold text-lg"></p>
+            <p id="scoreDisplay" class="text-xl font-semibold text-white"></p>
+            <p id="commentDisplay" class="text-slate-300"></p>
+        </div>
+        
+        <div id="waitingCard" class="hidden bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700 text-center">
+            <p id="waitingText" class="text-slate-400">⏳ تم إرسال إجاباتك بنجاح. انتظر المعلم ليعلن النتيجة والتقييم هنا.</p>
+        </div>
+    </div>
+
+    <script>
+        let timerInterval = null;
+
+        function loadStudentContent() {
+            loadStudentNews();
+            
+            const examData = JSON.parse(localStorage.getItem('live_exam'));
+            const isSubmitted = localStorage.getItem('exam_already_submitted') === 'true';
+            const startTime = localStorage.getItem('exam_start_time');
+
+            if(!examData || !examData.questions || examData.questions.length === 0) {
+                document.getElementById('welcomeExamTitle').innerText = "لا توجد امتحانات نشطة حالياً";
+                document.getElementById('welcomeExamInfo').innerText = "تابع لوحة الإعلانات أعلاه أو انتظر المعلم لنشر امتحان جديد.";
+                return;
+            }
+
+            if(isSubmitted) {
+                document.getElementById('startScreen').classList.add('hidden');
+                document.getElementById('waitingCard').classList.remove('hidden');
+                checkPublishedResult();
+                return;
+            }
+
+            if(!startTime) {
+                document.getElementById('welcomeExamTitle').innerText = examData.title || "امتحان جديد";
+                document.getElementById('welcomeExamInfo').innerText = `مدة الامتحان: ${examData.duration || 10} دقائق. بمجرد الضغط سيبدأ الوقت!`;
+                document.getElementById('startBtnWrapper').classList.remove('hidden');
+                return;
+            }
+
+            renderExamQuestions(examData);
+            startCountdown(examData.duration || 10);
+        }
+
+        function loadStudentNews() {
+            const newsList = JSON.parse(localStorage.getItem('teacher_news')) || [];
+            const container = document.getElementById('studentNewsContainer');
+            const section = document.getElementById('studentNewsSection');
+
+            if(newsList.length === 0) {
+                section.classList.add('hidden');
+                return;
+            }
+
+            section.classList.remove('hidden');
+            let html = '';
+            newsList.forEach(n => {
+                html += `
+                    <div class="p-3 bg-slate-900 rounded-xl border border-slate-700">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-bold text-teal-300 text-sm">${n.title || 'إعلان'}</span>
+                            <span class="text-slate-500 text-[10px]">${n.date}</span>
+                        </div>
+                        <p class="text-slate-300 text-xs">${n.content}</p>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function startExamTimer() {
+            const examData = JSON.parse(localStorage.getItem('live_exam'));
+            const durationMinutes = examData.duration || 10;
+            
+            const now = new Date().getTime();
+            localStorage.setItem('exam_start_time', now);
+
+            document.getElementById('startScreen').classList.add('hidden');
+            renderExamQuestions(examData);
+            startCountdown(durationMinutes);
+        }
+
+        function renderExamQuestions(examData) {
+            document.getElementById('mainExamTitle').innerText = examData.title || "ساحة التحدي الدراسي";
+            document.getElementById('examSubtitle').innerText = "أجب عن الأسئلة قبل نفاد الوقت!";
+
+            const container = document.getElementById('studentQuestionsContainer');
+            const resourceBox = document.getElementById('resourceBox');
+            const extLink = document.getElementById('externalLink');
+
+            if(examData.link && examData.link.trim() !== '') {
+                extLink.href = examData.link;
+                resourceBox.classList.remove('hidden');
+            }
+
+            let html = '';
+            examData.questions.forEach((q, qIdx) => {
+                html += `
+                    <div class="p-4 bg-slate-900 rounded-xl border border-slate-700">
+                        <p class="font-semibold text-lg mb-3">السؤال ${qIdx + 1}: ${q.text}</p>
+                        <div class="space-y-2">
+                `;
+                q.options.forEach((opt, optIdx) => {
+                    html += `
+                        <label class="block p-3 bg-slate-800 rounded-lg border border-slate-700 cursor-pointer hover:bg-indigo-950 transition">
+                            <input type="radio" name="question_${qIdx}" value="${optIdx}" class="ml-2"> ${opt}
+                        </label>
+                    `;
+                });
+                html += `</div></div>`;
+            });
+            container.innerHTML = html;
+            document.getElementById('examInterface').classList.remove('hidden');
+            document.getElementById('timerContainer').classList.remove('hidden');
+        }
+
+        function startCountdown(durationMinutes) {
+            const startTime = parseInt(localStorage.getItem('exam_start_time'));
+            const totalDurationMs = durationMinutes * 60 * 1000;
+
+            timerInterval = setInterval(() => {
+                const now = new Date().getTime();
+                const elapsedTime = now - startTime;
+                const timeLeftMs = totalDurationMs - elapsedTime;
+
+                if(timeLeftMs <= 0) {
+                    clearInterval(timerInterval);
+                    alert('انتهى وقت الامتحان! سيتم إرسال إجاباتك تلقائياً.');
+                    submitExam(true);
+                    return;
+                }
+
+                const minutes = Math.floor((timeLeftMs % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((timeLeftMs % (1000 * 60)) / 1000);
+
+                document.getElementById('timeLeft').innerText = 
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+
+        function submitExam(isAuto = false) {
+            if(localStorage.getItem('exam_already_submitted') === 'true') return;
+            
+            if(timerInterval) clearInterval(timerInterval);
+
+            const examData = JSON.parse(localStorage.getItem('live_exam'));
+            if(!examData || !examData.questions) return;
+
+            let score = 0;
+            let total = examData.questions.length;
+
+            examData.questions.forEach((q, qIdx) => {
+                const selected = document.querySelector(`input[name="question_${qIdx}"]:checked`);
+                if(selected && parseInt(selected.value) === q.correct) {
+                    score++;
+                }
+            });
+
+            localStorage.setItem('last_student_submission', JSON.stringify({
+                score,
+                total,
+                percentage: Math.round((score / total) * 100),
+                time: new Date().toLocaleTimeString(),
+                viewedByTeacher: false
+            }));
+
+            localStorage.setItem('exam_already_submitted', 'true');
+
+            if(!isAuto) {
+                alert('تم إرسال إجاباتك بنجاح إلى المعلم!');
+            }
+            location.reload();
+        }
+
+        function checkPublishedResult() {
+            const pub = JSON.parse(localStorage.getItem('published_result_for_student'));
+            if(pub) {
+                document.getElementById('titleDisplay').innerText = `اللقب: ${pub.title}`;
+                document.getElementById('scoreDisplay').innerText = `الدرجة: ${pub.score} من ${pub.total} (${pub.percentage}%)`;
+                document.getElementById('commentDisplay').innerText = `تعليق المعلم: ${pub.comment}`;
+                document.getElementById('resultCard').classList.remove('hidden');
+                document.getElementById('waitingCard').classList.add('hidden');
+            }
+        }
+
+        setInterval(checkPublishedResult, 2000);
+        window.onload = loadStudentContent;
+    </script>
+</body>
+</html>
